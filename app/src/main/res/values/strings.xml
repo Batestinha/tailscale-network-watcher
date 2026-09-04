@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Tailscale Network Watcher</string>
+    <string name="explanation">Sleeps on Android network callbacks and performs one guarded Tailscale restart after a stable physical-network handover.</string>
+    <string name="start_listener">Start listener</string>
+    <string name="restart_now">Restart Tailscale now</string>
+    <string name="grant_shizuku">Grant Shizuku permission</string>
+    <string name="stop_listener">Stop listener</string>
+    <string name="listener_started">Listener started</string>
+    <string name="restart_requested">Restart requested</string>
+    <string name="stop_requested">Stop requested</string>
+    <string name="footnote">The low-priority foreground notification keeps the callbacks registered. There is no polling, scheduled job, alarm, shell monitor, or wake lock. The Shizuku UserService exists only for a restart transaction.</string>
+    <string name="enabled">Enabled</string>
+    <string name="disabled">Disabled</string>
+    <string name="pending">Pending</string>
+    <string name="clear">Clear</string>
+    <string name="status_template">Listener: %1$s\nState: %2$s\nPhysical: %3$s (%4$s)\nShizuku: %5$s\nPending Shizuku restart: %6$s\nRecovery marker: %7$s\nLast restart result: %8$s\nUpdated: %9$s</string>
+</resources>

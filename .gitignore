@@ -1,0 +1,10 @@
+/.gradle/
+/.idea/
+/build/
+/app/build/
+/local.properties
+/.signing/*
+!/.signing/.gitkeep
+!/.signing/netwatch.properties.example
+*.apk
+*.idsig

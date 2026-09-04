@@ -1,0 +1,1 @@
+-keep class dev.local.tailscalenetwatch.TailscaleCycleUserService { public <init>(...); }

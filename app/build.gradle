@@ -1,0 +1,80 @@
+plugins {
+    id 'com.android.application'
+}
+
+def signingPropertiesFile = rootProject.file('.signing/netwatch.properties')
+def signingProperties = new Properties()
+if (signingPropertiesFile.isFile()) {
+    signingPropertiesFile.withInputStream { signingProperties.load(it) }
+}
+def releaseKeystoreFile = rootProject.file('.signing/netwatch.keystore')
+def hasReleaseSigning = releaseKeystoreFile.isFile()
+        && ['storePassword', 'keyAlias', 'keyPassword'].every {
+            signingProperties.getProperty(it)
+        }
+
+android {
+    namespace 'dev.local.tailscalenetwatch'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'dev.local.tailscalenetwatch'
+        minSdk 31
+        targetSdk 36
+        versionCode 4
+        versionName '2.0'
+    }
+
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile releaseKeystoreFile
+                storePassword signingProperties.getProperty('storePassword')
+                keyAlias signingProperties.getProperty('keyAlias')
+                keyPassword signingProperties.getProperty('keyPassword')
+                enableV1Signing false
+                enableV2Signing true
+                enableV3Signing true
+                enableV4Signing true
+            }
+        }
+    }
+
+    buildTypes {
+        debug {
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+        }
+        release {
+            minifyEnabled false
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
+    }
+
+    buildFeatures {
+        aidl true
+        buildConfig true
+    }
+
+    testOptions {
+        unitTests.returnDefaultValues = true
+    }
+}
+
+dependencies {
+    implementation 'dev.rikka.shizuku:api:13.1.5'
+    implementation 'dev.rikka.shizuku:provider:13.1.5'
+    implementation 'androidx.annotation:annotation:1.10.0'
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
+    testImplementation 'junit:junit:4.13.2'
+}

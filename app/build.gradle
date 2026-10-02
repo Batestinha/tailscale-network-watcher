@@ -7,11 +7,20 @@ def signingProperties = new Properties()
 if (signingPropertiesFile.isFile()) {
     signingPropertiesFile.withInputStream { signingProperties.load(it) }
 }
-def releaseKeystoreFile = rootProject.file('.signing/netwatch.keystore')
+def environmentStoreFile = System.getenv('NETWATCH_STORE_FILE')
+def releaseKeystoreFile = environmentStoreFile
+        ? file(environmentStoreFile)
+        : rootProject.file('.signing/netwatch.keystore')
+def releaseStorePassword = System.getenv('NETWATCH_STORE_PASSWORD')
+        ?: signingProperties.getProperty('storePassword')
+def releaseKeyAlias = System.getenv('NETWATCH_KEY_ALIAS')
+        ?: signingProperties.getProperty('keyAlias')
+def releaseKeyPassword = System.getenv('NETWATCH_KEY_PASSWORD')
+        ?: signingProperties.getProperty('keyPassword')
 def hasReleaseSigning = releaseKeystoreFile.isFile()
-        && ['storePassword', 'keyAlias', 'keyPassword'].every {
-            signingProperties.getProperty(it)
-        }
+        && releaseStorePassword
+        && releaseKeyAlias
+        && releaseKeyPassword
 
 android {
     namespace 'dev.local.tailscalenetwatch'
@@ -19,19 +28,19 @@ android {
 
     defaultConfig {
         applicationId 'dev.local.tailscalenetwatch'
-        minSdk 31
+        minSdk 29
         targetSdk 36
-        versionCode 4
-        versionName '2.0'
+        versionCode 5
+        versionName '2.1'
     }
 
     signingConfigs {
         if (hasReleaseSigning) {
             release {
                 storeFile releaseKeystoreFile
-                storePassword signingProperties.getProperty('storePassword')
-                keyAlias signingProperties.getProperty('keyAlias')
-                keyPassword signingProperties.getProperty('keyPassword')
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
                 enableV1Signing false
                 enableV2Signing true
                 enableV3Signing true

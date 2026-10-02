@@ -1,0 +1,62 @@
+name: Android CI and release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-36' 'build-tools;36.0.0'
+      - name: Validate source
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon test lintDebug assembleDebug
+      - name: Configure release signing
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          SIGNING_KEY: ${{ secrets.NETWATCH_KEYSTORE_BASE64 }}
+          STORE_PASSWORD: ${{ secrets.NETWATCH_STORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.NETWATCH_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.NETWATCH_KEY_PASSWORD }}
+        run: |
+          test -n "$SIGNING_KEY"
+          test -n "$STORE_PASSWORD"
+          test -n "$KEY_ALIAS"
+          test -n "$KEY_PASSWORD"
+          printf '%s' "$SIGNING_KEY" | base64 --decode > "$RUNNER_TEMP/netwatch.keystore"
+          echo "NETWATCH_STORE_FILE=$RUNNER_TEMP/netwatch.keystore" >> "$GITHUB_ENV"
+          echo "NETWATCH_STORE_PASSWORD=$STORE_PASSWORD" >> "$GITHUB_ENV"
+          echo "NETWATCH_KEY_ALIAS=$KEY_ALIAS" >> "$GITHUB_ENV"
+          echo "NETWATCH_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+      - name: Build signed release
+        if: startsWith(github.ref, 'refs/tags/')
+        run: ./gradlew --no-daemon lintRelease assembleRelease
+      - name: Publish GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          asset="tailscale-network-watcher-v${version}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "$asset"
+          sha256sum "$asset" > "$asset.sha256"
+          gh release create "$GITHUB_REF_NAME" \
+            "$asset" "$asset.sha256" \
+            --title "Tailscale Network Watcher ${version}" \
+            --notes "Android 10 compatibility release. Minimum Android version: Android 10 (API 29). Android 10 and 11 use passive multi-network callbacks with deterministic best-network selection; Android 12 and newer retain the platform best-matching callback. The v2.0 signing key was unavailable, so uninstall v2.0 before installing this release."

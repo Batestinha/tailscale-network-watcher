@@ -19,7 +19,9 @@ after 15 seconds, followed by one final 15-second wait and a warning; there is n
 ## Build
 
 The project uses Gradle 8.11.1, Android Gradle Plugin 8.8.0, Java 17, compile/target SDK 36,
-min SDK 31, and Shizuku API/provider 13.1.5.
+min SDK 29 (Android 10), and Shizuku API/provider 13.1.5. Android 10 and 11 use a passive
+multi-network callback with deterministic best-network selection; Android 12 and newer use the
+platform best-matching callback.
 
 ```sh
 ./gradlew test assembleRelease
@@ -28,9 +30,10 @@ min SDK 31, and Shizuku API/provider 13.1.5.
 The release APK is `app/build/outputs/apk/release/app-release.apk` and is signed with the preserved
 local `netwatch` key when `.signing/netwatch.keystore` and `.signing/netwatch.properties` are
 present. Copy `.signing/netwatch.properties.example` to the ignored `netwatch.properties` file and
-provide the local key credentials. Without them, Gradle produces an unsigned release APK and uses
-the standard debug key for debug builds. Package/version: `dev.local.tailscalenetwatch`, code 4,
-name 2.0.
+provide the local key credentials. CI can instead use `NETWATCH_STORE_FILE`,
+`NETWATCH_STORE_PASSWORD`, `NETWATCH_KEY_ALIAS`, and `NETWATCH_KEY_PASSWORD`. Without signing
+credentials, Gradle produces an unsigned release APK and uses the standard debug key for debug
+builds. Package/version: `dev.local.tailscalenetwatch`, code 5, name 2.1.
 
 ## Device acceptance
 

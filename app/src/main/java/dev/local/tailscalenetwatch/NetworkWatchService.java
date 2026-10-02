@@ -82,6 +82,8 @@ public final class NetworkWatchService extends Service {
 
     private final Set<Long> vpnHandles = new HashSet<>();
     private final Map<Long, String> physicalSignaturesByHandle = new HashMap<>();
+    private final Map<Long, LegacyBestNetworkSelector.Candidate> legacyPhysicalCandidates =
+            new HashMap<>();
 
     private ConnectivityManager connectivityManager;
     private NotificationManager notificationManager;
@@ -99,6 +101,8 @@ public final class NetworkWatchService extends Service {
     private boolean stopAfterTransaction;
     private boolean shizukuReady;
     private boolean permissionRequestOutstanding;
+    private Long legacySelectedHandle;
+    private String legacySelectedSignature;
 
     private Shizuku.UserServiceArgs userServiceArgs;
     private ServiceConnection userServiceConnection;
@@ -259,6 +263,10 @@ public final class NetworkWatchService extends Service {
         physicalCallback = new ConnectivityManager.NetworkCallback() {
             @Override
             public void onCapabilitiesChanged(Network network, NetworkCapabilities capabilities) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    updateLegacyPhysicalCandidate(network, capabilities);
+                    return;
+                }
                 long handle = network.getNetworkHandle();
                 String signature = physicalSignature(network, capabilities);
                 String previousSignature = physicalSignaturesByHandle.put(handle, signature);
@@ -277,6 +285,10 @@ public final class NetworkWatchService extends Service {
 
             @Override
             public void onLost(Network network) {
+                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+                    removeLegacyPhysicalCandidate(network.getNetworkHandle());
+                    return;
+                }
                 String signature = physicalSignaturesByHandle.remove(network.getNetworkHandle());
                 if (signature != null) {
                     applyDecision(handover.onInvalidatedOrLost(signature));
@@ -319,11 +331,20 @@ public final class NetworkWatchService extends Service {
                 .build();
 
         try {
-            connectivityManager.registerBestMatchingNetworkCallback(
-                    physicalRequest,
-                    physicalCallback,
-                    handler
-            );
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                connectivityManager.registerBestMatchingNetworkCallback(
+                        physicalRequest,
+                        physicalCallback,
+                        handler
+                );
+            } else {
+                seedLegacyPhysicalCandidates();
+                connectivityManager.registerNetworkCallback(
+                        physicalRequest,
+                        physicalCallback,
+                        handler
+                );
+            }
             physicalCallbackRegistered = true;
             connectivityManager.registerNetworkCallback(vpnRequest, vpnCallback, handler);
             vpnCallbackRegistered = true;
@@ -346,6 +367,10 @@ public final class NetworkWatchService extends Service {
             }
             physicalCallbackRegistered = false;
         }
+        physicalSignaturesByHandle.clear();
+        legacyPhysicalCandidates.clear();
+        legacySelectedHandle = null;
+        legacySelectedSignature = null;
         if (vpnCallbackRegistered) {
             try {
                 connectivityManager.unregisterNetworkCallback(vpnCallback);
@@ -1087,14 +1112,17 @@ public final class NetworkWatchService extends Service {
                 NetworkCapabilities.TRANSPORT_BLUETOOTH,
                 NetworkCapabilities.TRANSPORT_ETHERNET,
                 NetworkCapabilities.TRANSPORT_WIFI_AWARE,
-                NetworkCapabilities.TRANSPORT_LOWPAN,
-                NetworkCapabilities.TRANSPORT_USB
+                NetworkCapabilities.TRANSPORT_LOWPAN
         };
         long mask = 0L;
         for (int transport : baseTransports) {
             if (capabilities.hasTransport(transport)) {
                 mask |= 1L << transport;
             }
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_USB)) {
+            mask |= 1L << NetworkCapabilities.TRANSPORT_USB;
         }
         if (Build.VERSION.SDK_INT >= 34
                 && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_THREAD)) {
@@ -1120,7 +1148,8 @@ public final class NetworkWatchService extends Service {
         if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
             labels.add("cellular");
         }
-        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_USB)) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_USB)) {
             labels.add("USB");
         }
         if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) {
@@ -1135,6 +1164,100 @@ public final class NetworkWatchService extends Service {
             labels.add("Thread");
         }
         return labels.isEmpty() ? "physical network" : String.join(" + ", labels);
+    }
+
+    @SuppressWarnings("deprecation")
+    private void seedLegacyPhysicalCandidates() {
+        legacyPhysicalCandidates.clear();
+        for (Network network : connectivityManager.getAllNetworks()) {
+            NetworkCapabilities capabilities = connectivityManager.getNetworkCapabilities(network);
+            if (capabilities != null && isValidatedPhysical(capabilities)) {
+                putLegacyPhysicalCandidate(network, capabilities);
+            }
+        }
+        applyLegacyBestPhysical();
+    }
+
+    private void updateLegacyPhysicalCandidate(
+            Network network,
+            NetworkCapabilities capabilities
+    ) {
+        if (isValidatedPhysical(capabilities)) {
+            putLegacyPhysicalCandidate(network, capabilities);
+        } else {
+            legacyPhysicalCandidates.remove(network.getNetworkHandle());
+        }
+        applyLegacyBestPhysical();
+    }
+
+    private void putLegacyPhysicalCandidate(
+            Network network,
+            NetworkCapabilities capabilities
+    ) {
+        long handle = network.getNetworkHandle();
+        legacyPhysicalCandidates.put(
+                handle,
+                new LegacyBestNetworkSelector.Candidate(
+                        handle,
+                        physicalSignature(network, capabilities),
+                        physicalLabel(capabilities),
+                        legacyPhysicalPriority(capabilities)
+                )
+        );
+    }
+
+    private void removeLegacyPhysicalCandidate(long handle) {
+        legacyPhysicalCandidates.remove(handle);
+        applyLegacyBestPhysical();
+    }
+
+    private void applyLegacyBestPhysical() {
+        LegacyBestNetworkSelector.Candidate selected = LegacyBestNetworkSelector.select(
+                legacyPhysicalCandidates.values(),
+                legacySelectedHandle
+        );
+        if (selected == null) {
+            String previousSignature = legacySelectedSignature;
+            legacySelectedHandle = null;
+            legacySelectedSignature = null;
+            if (previousSignature != null) {
+                applyDecision(handover.onInvalidatedOrLost(previousSignature));
+            }
+            return;
+        }
+        if (selected.handle == (legacySelectedHandle == null ? -1L : legacySelectedHandle)
+                && selected.signature.equals(legacySelectedSignature)) {
+            return;
+        }
+        legacySelectedHandle = selected.handle;
+        legacySelectedSignature = selected.signature;
+        applyDecision(handover.onValidated(
+                selected.signature,
+                selected.label,
+                System.currentTimeMillis()
+        ));
+    }
+
+    private static int legacyPhysicalPriority(NetworkCapabilities capabilities) {
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) {
+            return 600;
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+            return 500;
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) {
+            return 400;
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH)) {
+            return 300;
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_LOWPAN)) {
+            return 200;
+        }
+        if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI_AWARE)) {
+            return 100;
+        }
+        return 0;
     }
 
     private static String encodeHandles(Set<Long> handles) {

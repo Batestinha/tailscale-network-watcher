@@ -39,6 +39,16 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".ProvisioningReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP">
+            <intent-filter>
+                <action android:name="dev.local.tailscalenetwatch.action.STATUS" />
+                <action android:name="dev.local.tailscalenetwatch.action.ENABLE" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".NetworkWatchService"
             android:exported="false"

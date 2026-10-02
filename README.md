@@ -16,6 +16,17 @@ attempt, a persisted marker remains until a VPN callback identifies a replacemen
 One direct reconnect is attempted
 after 15 seconds, followed by one final 15-second wait and a warning; there is no retry loop.
 
+## scrcpy Manager provisioning contract
+
+Version 2.2.0 exposes two broadcasts protected by `android.permission.DUMP`:
+
+- `dev.local.tailscalenetwatch.action.STATUS`
+- `dev.local.tailscalenetwatch.action.ENABLE`
+
+ADB shell/root receives protocol-versioned JSON in the ordered-broadcast result
+data. `ENABLE` persists the enabled state and starts the foreground watcher;
+ordinary Android applications cannot invoke either endpoint.
+
 ## Build
 
 The project uses Gradle 8.11.1, Android Gradle Plugin 8.8.0, Java 17, compile/target SDK 36,
@@ -33,7 +44,7 @@ present. Copy `.signing/netwatch.properties.example` to the ignored `netwatch.pr
 provide the local key credentials. CI can instead use `NETWATCH_STORE_FILE`,
 `NETWATCH_STORE_PASSWORD`, `NETWATCH_KEY_ALIAS`, and `NETWATCH_KEY_PASSWORD`. Without signing
 credentials, Gradle produces an unsigned release APK and uses the standard debug key for debug
-builds. Package/version: `dev.local.tailscalenetwatch`, code 5, name 2.1.
+builds. Package/version: `dev.local.tailscalenetwatch`, code 6, name 2.2.0.
 
 ## Device acceptance
 
